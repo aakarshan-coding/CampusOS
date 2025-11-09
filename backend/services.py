@@ -1,6 +1,7 @@
 import os
 import httpx
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from math import inf
 from dotenv import load_dotenv
 from typing import List, Dict, Any, Optional
 
@@ -78,6 +79,19 @@ def list_calendar_events_raw(start_date: Optional[str] = None, end_date: Optiona
     if end_date: params["end_date"] = end_date
     return _collect(f"{CANVAS_BASE}/api/v1/calendar_events", params=params)
 
+def _parse_canvas_iso(ts: Optional[str]) -> Optional[datetime]:
+    """Parse Canvas ISO timestamps into timezone-aware UTC datetimes."""
+    if not ts:
+        return None
+    s = ts.replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(s)
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
 # all functions to parse data points from original canvas data and return cleanly
 
 def mcp_list_courses() -> List[Dict[str, Any]]:
@@ -91,4 +105,27 @@ def mcp_list_courses() -> List[Dict[str, Any]]:
         })
     return out
 
+def mcp_list_assignments(course_id: int, due_within_days: int = 14) -> List[Dict[str, Any]]:
+    cutoff = datetime.now(timezone.utc) + timedelta(days=due_within_days)
+    items: List[Dict[str, Any]] = []
+    for a in list_assignments_raw(course_id):
+        due_at = a.get("due_at")
+        due_dt = _parse_canvas_iso(due_at)
+        if not due_dt:
+            continue
+        if due_dt <= cutoff:
+            items.append({
+                "id": a.get("id"),
+                "name": a.get("name"),
+                "due_at": due_at,
+                "points_possible": a.get("points_possible"),
+                "html_url": a.get("html_url"),
+            })
+
+    def sort_key(x: Dict[str, Any]):
+        dt = _parse_canvas_iso(x.get("due_at"))
+        return dt or datetime.max.replace(tzinfo=timezone.utc)
+
+    items.sort(key=sort_key)
+    return items
 

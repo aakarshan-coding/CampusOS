@@ -17,14 +17,15 @@ async def main():
         params={
             "command": sys.executable,
             "args": [str(server_script)],
-        }
+        },
+        client_session_timeout_seconds=30.0
     ) as server:
         agent = Agent(
             name="CampusCopilot",
             instructions="You are a helpful assistant that can answer questions about the campus and help with tasks. Use MCP tools to read Canvas data.",
             mcp_servers=[server],
         )
-        result = await Runner.run(agent, "List the courses available from canvas.")
+        result = await Runner.run(agent, "please list all of my courses and my upcoming assignments.")
         print(result.final_output)
 
 if __name__ == "__main__":
